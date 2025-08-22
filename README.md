@@ -1,5 +1,3 @@
-# 3in1GmaeAnalyticsDash
-
 # 🎮 Unified Game Analytics Dashboard – 3-in-1 Streamlit Toolkit
 
 > 🚀 A personal project by [Pushpal Kawara](mailto:pushpalkawara101@gmail.com)
