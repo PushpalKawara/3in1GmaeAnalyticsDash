@@ -63,6 +63,48 @@ def generate_excel_report_dp1(df_summary, df_progression, fig1, fig2):
     output.seek(0)
     return output
 
+def generate_excel_report_gp(df_export, retention_fig, drop_fig, drop_comb_fig, version, date_selected):
+    """Generates an Excel report for the Game Progression tool."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_export.to_excel(writer, index=False, sheet_name='Game Progression')
+        workbook = writer.book
+        worksheet = writer.sheets['Game Progression']
+        
+        # Add title and metadata
+        title = f"Game Progression Report"
+        worksheet.write('M1', title, workbook.add_format({'bold': True, 'font_size': 14}))
+        worksheet.write('M2', f"Version: {version}", workbook.add_format({'font_size': 10}))
+        worksheet.write('M3', f"Date: {date_selected.strftime('%d-%m-%Y')}", workbook.add_format({'font_size': 10}))
+
+        # Insert charts
+        chart_start_row = 2 
+        
+        # Insert Retention Chart
+        img1 = BytesIO()
+        retention_fig.savefig(img1, format='png', bbox_inches='tight')
+        img1.seek(0)
+        worksheet.insert_image(f'M{chart_start_row}', 'retention_chart.png', {'image_data': img1})
+
+        # Insert Drop Chart
+        img2 = BytesIO()
+        drop_fig.savefig(img2, format='png', bbox_inches='tight')
+        img2.seek(0)
+        # Calculate new row to insert below the first chart
+        chart_start_row += 30 # Approx. rows for a chart
+        worksheet.insert_image(f'M{chart_start_row}', 'drop_chart.png', {'image_data': img2})
+        
+        # Insert Combo Drop Chart
+        img3 = BytesIO()
+        drop_comb_fig.savefig(img3, format='png', bbox_inches='tight')
+        img3.seek(0)
+        # Calculate new row to insert below the second chart
+        chart_start_row += 30
+        worksheet.insert_image(f'M{chart_start_row}', 'combo_drop_chart.png', {'image_data': img3})
+
+    output.seek(0)
+    return output
+
 def create_retention_chart(df, version, date_selected, title):
     """Creates a retention chart from a DataFrame."""
     fig, ax = plt.subplots(figsize=(15, 7))
@@ -376,6 +418,16 @@ def game_progression_tool():
         export_cols = ['LEVEL_CLEAN', 'Start Users', 'Complete Users', 'Game Play Drop', 'Popup Drop', 'Total Level Drop', 'Retention %'] + additional_cols
         df_export = df[export_cols].rename(columns={'LEVEL_CLEAN': 'Level'})
         st.dataframe(df_export, hide_index=True, use_container_width=True)
+        
+        # Add the download button here
+        excel_data_gp = generate_excel_report_gp(df_export, retention_fig, drop_fig, drop_comb_fig, version, date_selected)
+        st.download_button(
+            label="📥 Download Excel Report",
+            data=excel_data_gp,
+            file_name=f"Game_Progression_Report_{version}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
 
 # --- Tool 3: GAME LEVEL DATA ANALYZER ---
 def process_files_analyzer(start_df, complete_df):
@@ -508,8 +560,8 @@ def generate_excel_analyzer(processed_data):
         sheet_name = str(game_key)[:31]
         ws = wb.create_sheet(sheet_name)
         headers = ["=HYPERLINK(\"#MAIN_TAB!A1\", \"Back to Main\")", "Start Users", "Complete Users",
-                   "Game Play Drop", "Popup Drop", "Total Level Drop", "Retention %",
-                   "PLAY_TIME_AVG", "HINT_USED_SUM", "SKIPPED_SUM", "ATTEMPTS_SUM"]
+                    "Game Play Drop", "Popup Drop", "Total Level Drop", "Retention %",
+                    "PLAY_TIME_AVG", "HINT_USED_SUM", "SKIPPED_SUM", "ATTEMPTS_SUM"]
         ws.append(headers)
         ws['A1'].font = Font(color="0000FF", underline="single", bold=True, size=14)
         ws['A1'].fill = PatternFill("solid", fgColor="FFFF00")
@@ -577,81 +629,64 @@ def apply_conditional_formatting_analyzer(sheet, num_rows):
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
 def add_charts_to_excel_analyzer(worksheet, charts):
-    img_positions = {'retention': 'M2', 'total_drop': 'M52', 'combined_drop': 'M98'}
-    for chart_type, pos in img_positions.items():
-        if chart_type in charts:
+    img_positions = {'retention': 'M2', 'total_drop': 'M32', 'combined_drop': 'M62'}
+    for name, fig in charts.items():
+        if fig:
             img_data = BytesIO()
-            charts[chart_type].savefig(img_data, format='png', dpi=150, bbox_inches='tight')
+            fig.savefig(img_data, format='png', bbox_inches='tight')
             img_data.seek(0)
             img = OpenpyxlImage(img_data)
-            worksheet.add_image(img, pos)
-            plt.close(charts[chart_type])
-
-def game_level_analyzer_tool():
-    st.header("🎮 GAME LEVEL DATA ANALYZER")
-    st.markdown("This tool processes level start and complete data to generate a detailed analytics report.")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        start_file = st.file_uploader("LEVEL_START.csv", type="csv", key='analyzer_start')
-    with col2:
-        complete_file = st.file_uploader("LEVEL_COMPLETE.csv", type="csv", key='analyzer_complete')
-    
-    # Show sample input image if no files are uploaded
-    if not start_file and not complete_file:
-        st.subheader("💡 Sample Input File Format")
-        st.markdown("Please use the following format for your CSV files:")
-        st.markdown("---")
-        st.markdown("#### **LEVEL_START.csv**")
-        st.image("https://i.imgur.com/vHq869L.png", caption="Sample LEVEL_START.csv Data", use_column_width=True)
-        st.markdown("---")
-        st.markdown("#### **LEVEL_COMPLETE.csv**")
-        st.image("https://i.imgur.com/rM1VfO7.png", caption="Sample LEVEL_COMPLETE.csv Data", use_column_width=True)
-        st.markdown("---")
-
-    if start_file and complete_file:
-        with st.spinner("Processing data..."):
-            try:
-                start_df = pd.read_csv(start_file)
-                complete_df = pd.read_csv(complete_file)
-                merged = process_files_analyzer(start_df, complete_df)
-                group_cols = [col for col in ['GAME_ID', 'DIFFICULTY'] if col in merged.columns]
-                if not group_cols:
-                    if 'All Data' not in merged.columns:
-                        merged['All Data'] = 'All Data'
-                    group_cols = ['All Data']
-                processed_data = {}
-                for group_key, group_df in merged.groupby(group_cols):
-                    key = '_'.join(map(str, group_key)) if isinstance(group_key, tuple) else str(group_key)
-                    processed_data[key] = group_df
-                
-                wb = generate_excel_analyzer(processed_data)
-                
-                with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                    wb.save(tmp.name)
-                    with open(tmp.name, "rb") as f:
-                        excel_bytes = f.read()
-
-                st.success("Processing complete!")
-                st.download_button(
-                    label="📥 Download Excel Report",
-                    data=excel_bytes,
-                    file_name="Game_Level_Analytics_Report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            except Exception as e:
-                st.error(f"❌ An error occurred during processing: {e}")
+            worksheet.add_image(img, img_positions[name])
 
 # --- Main App Logic ---
-st.set_page_config(layout="wide", page_title="Game Analytics Tools", page_icon="🎮")
-st.title("🎮 Game Analytics Tools")
+if __name__ == "__main__":
+    st.set_page_config(layout="wide", page_title="Game Metrics Dashboard", page_icon="🎮")
+    st.title("🎮 Game Analytics Dashboard")
+    st.markdown("A suite of tools to analyze game progression, retention, and drop-off rates.")
 
-if check_password():
-    st.sidebar.title("🛠️ Tools")
-    tool_options = {
-        "DP1GAME METRIX": dp1game_metrix_tool,
-        "GAME PROGRESSION": game_progression_tool,
-        "GAME LEVEL DATA ANALYZER": game_level_analyzer_tool
-    }
-    selected_tool = st.sidebar.radio("Select a Tool:", list(tool_options.keys()))
-    tool_options[selected_tool]()
+    if check_password():
+        tool_choice = st.sidebar.radio("Select Tool", ["DP1GAME METRIX", "GAME PROGRESSION", "GAME LEVEL DATA ANALYZER"], key="tool_select")
+        
+        st.sidebar.markdown("---")
+        if st.sidebar.button("Log Out"):
+            st.session_state.logged_in = False
+            st.rerun()
+
+        if tool_choice == "DP1GAME METRIX":
+            dp1game_metrix_tool()
+        elif tool_choice == "GAME PROGRESSION":
+            game_progression_tool()
+        elif tool_choice == "GAME LEVEL DATA ANALYZER":
+            st.header("📊 GAME LEVEL DATA ANALYZER")
+            st.markdown("This tool processes a start file and a complete file, and generates a detailed Excel report with various metrics and charts for each unique game/level/difficulty combination.")
+            st.warning("Note: This tool is designed for more complex datasets with multiple games or difficulty modes. Please upload your files and follow the instructions to generate the report.")
+
+            col1_analyzer, col2_analyzer = st.columns(2)
+            with col1_analyzer:
+                start_file_analyzer = st.file_uploader("📂 Upload Start Level File", type=["xlsx", "csv"], key="start_analyzer")
+            with col2_analyzer:
+                complete_file_analyzer = st.file_uploader("📂 Upload Complete Level File", type=["xlsx", "csv"], key="complete_analyzer")
+
+            if start_file_analyzer and complete_file_analyzer:
+                try:
+                    start_df_analyzer = pd.read_excel(start_file_analyzer) if start_file_analyzer.name.endswith(".xlsx") else pd.read_csv(start_file_analyzer)
+                    complete_df_analyzer = pd.read_excel(complete_file_analyzer) if complete_file_analyzer.name.endswith(".xlsx") else pd.read_csv(complete_file_analyzer)
+
+                    processed_data = process_files_analyzer(start_df_analyzer, complete_df_analyzer)
+                    
+                    st.success("✅ Files processed successfully! Click the button below to download the report.")
+                    
+                    if st.button("Generate & Download Full Excel Report"):
+                        with st.spinner('Generating Excel report... this may take a moment.'):
+                            workbook = generate_excel_analyzer(processed_data)
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_file:
+                                workbook.save(tmp_file.name)
+                                tmp_file.seek(0)
+                                st.download_button(
+                                    label="📥 Download Game Analyzer Report",
+                                    data=tmp_file.read(),
+                                    file_name="Game_Data_Analyzer_Report.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
+                except Exception as e:
+                    st.error(f"❌ An error occurred during processing: {e}")
