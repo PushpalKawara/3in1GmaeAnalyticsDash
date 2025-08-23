@@ -1,4 +1,4 @@
-import streamlit as st
+dimport streamlit as st
 import pandas as pd
 import numpy as np
 import re
@@ -111,7 +111,6 @@ def create_drop_chart(df, version, date_selected, title):
 # --- Tool 1: DP1GAME METRIX ---
 def dp1game_metrix_tool():
     st.header("📊 DP1GAME METRIX Dashboard")
-    st.subheader("Step 1: Upload Files")
     col1, col2 = st.columns(2)
     with col1:
         file1 = st.file_uploader("📥 Upload Retention Base File", type=["csv"], key='file1')
@@ -515,7 +514,6 @@ def add_charts_to_excel_analyzer(worksheet, charts):
 def game_level_analyzer_tool():
     st.header("🎮 GAME LEVEL DATA ANALYZER")
     st.markdown("This tool processes level start and complete data to generate a detailed analytics report.")
-    st.subheader("Step 1: Upload Files")
     start_file = st.file_uploader("LEVEL_START.csv", type="csv", key='analyzer_start')
     complete_file = st.file_uploader("LEVEL_COMPLETE.csv", type="csv", key='analyzer_complete')
     if start_file and complete_file:
