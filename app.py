@@ -13,6 +13,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # --- User credentials (for demonstration) ---
+
 USERNAME = "Pushpal@2025"
 PASSWORD = "Pushpal@202512345"
 
