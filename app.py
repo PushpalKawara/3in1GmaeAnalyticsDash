@@ -6,7 +6,6 @@ import datetime
 import matplotlib.pyplot as plt
 from io import BytesIO
 import xlsxwriter
-import tempfile
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -64,7 +63,7 @@ def generate_excel_report_dp1(df_summary, df_progression, fig1, fig2):
     return output
 
 def generate_excel_report_gp(df_export, retention_fig, drop_fig, drop_comb_fig, version, date_selected):
-    """Generates an Excel report for the Game Progression tool."""
+    """Generates an Excel report for the Game Progression tool with color formatting."""
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_export.to_excel(writer, index=False, sheet_name='Game Progression')
@@ -77,28 +76,43 @@ def generate_excel_report_gp(df_export, retention_fig, drop_fig, drop_comb_fig, 
         worksheet.write('M2', f"Version: {version}", workbook.add_format({'font_size': 10}))
         worksheet.write('M3', f"Date: {date_selected.strftime('%d-%m-%Y')}", workbook.add_format({'font_size': 10}))
 
-        # Insert charts
-        chart_start_row = 2 
+        # Cell formats for drop columns
+        format_dark_red = workbook.add_format({'bg_color': '#8B0000', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter', 'bold': True, 'num_format': '0.00'})
+        format_red = workbook.add_format({'bg_color': '#CD5C5C', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter', 'bold': True, 'num_format': '0.00'})
+        format_pink = workbook.add_format({'bg_color': '#FFC0CB', 'font_color': 'black', 'align': 'center', 'valign': 'vcenter', 'bold': True, 'num_format': '0.00'})
         
-        # Insert Retention Chart
+        # Apply conditional formatting
+        for col_name in ['Game Play Drop', 'Popup Drop', 'Total Level Drop']:
+            if col_name in df_export.columns:
+                col_idx = df_export.columns.get_loc(col_name)
+                for row_idx, value in enumerate(df_export[col_name]):
+                    if pd.notna(value):
+                        if value >= 10:
+                            worksheet.write(row_idx + 1, col_idx, value, format_dark_red)
+                        elif value >= 5:
+                            worksheet.write(row_idx + 1, col_idx, value, format_red)
+                        elif value >= 3:
+                            worksheet.write(row_idx + 1, col_idx, value, format_pink)
+                        else:
+                            worksheet.write(row_idx + 1, col_idx, value)
+
+        # Insert charts
+        chart_start_row = 2
+        
         img1 = BytesIO()
         retention_fig.savefig(img1, format='png', bbox_inches='tight')
         img1.seek(0)
         worksheet.insert_image(f'M{chart_start_row}', 'retention_chart.png', {'image_data': img1})
 
-        # Insert Drop Chart
         img2 = BytesIO()
         drop_fig.savefig(img2, format='png', bbox_inches='tight')
         img2.seek(0)
-        # Calculate new row to insert below the first chart
-        chart_start_row += 30 # Approx. rows for a chart
+        chart_start_row += 30
         worksheet.insert_image(f'M{chart_start_row}', 'drop_chart.png', {'image_data': img2})
         
-        # Insert Combo Drop Chart
         img3 = BytesIO()
         drop_comb_fig.savefig(img3, format='png', bbox_inches='tight')
         img3.seek(0)
-        # Calculate new row to insert below the second chart
         chart_start_row += 30
         worksheet.insert_image(f'M{chart_start_row}', 'combo_drop_chart.png', {'image_data': img3})
 
@@ -161,7 +175,6 @@ def dp1game_metrix_tool():
     with col2:
         file2 = st.file_uploader("📥 Upload Ad Event File (.csv)", type=["csv"], key='file2')
 
-    # Show sample input image if no files are uploaded
     if not file1 and not file2:
         st.subheader("💡 Sample Input File Format")
         st.markdown("Please use the following format for your CSV files:")
@@ -189,7 +202,7 @@ def dp1game_metrix_tool():
         st.subheader("✅ Data Processing & Analytics")
         df1 = pd.read_csv(file1)
         df1.columns = df1.columns.str.strip().str.upper()
-        level_col = next((col for col in df1.columns if col in ['LEVEL','Level', 'LEVELPLAYED', 'TOTALLEVELPLAYED', 'TOTALLEVELSPLAYED', 'LEVEL_NUMBER']), None)
+        level_col = next((col for col in df1.columns if col in ['LEVEL','Level', 'LEVELPLAYED', 'TOTALLEVELSPLAYED', 'LEVEL_NUMBER']), None)
         if level_col and 'USERS' in df1.columns:
             df1 = df1[[level_col, 'USERS']]
             df1['LEVEL_CLEAN'] = df1[level_col].apply(clean_level)
@@ -297,6 +310,7 @@ def dp1game_metrix_tool():
             file_name=f"DP1_METRIX_Report_{version}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 # --- Tool 2: GAME PROGRESSION ---
 def game_progression_tool():
     st.header("📊 GAME PROGRESSION Dashboard")
@@ -308,7 +322,6 @@ def game_progression_tool():
     with col2:
         complete_file = st.file_uploader("📂 Upload Complete Level File", type=["xlsx", "csv"], key='complete_file')
 
-    # Show sample input image if no files are uploaded
     if not start_file and not complete_file:
         st.subheader("💡 Sample Input File Format")
         st.markdown("Please use the following format for your files:")
@@ -419,7 +432,6 @@ def game_progression_tool():
         df_export = df[export_cols].rename(columns={'LEVEL_CLEAN': 'Level'})
         st.dataframe(df_export, hide_index=True, use_container_width=True)
         
-        # Add the download button here
         excel_data_gp = generate_excel_report_gp(df_export, retention_fig, drop_fig, drop_comb_fig, version, date_selected)
         st.download_button(
             label="📥 Download Excel Report",
@@ -436,22 +448,30 @@ def process_files_analyzer(start_df, complete_df):
             if col.strip().lower() in [name.lower() for name in possible_names]:
                 return col
         return None
+    
+    start_df.columns = start_df.columns.str.strip().str.upper()
+    complete_df.columns = complete_df.columns.str.strip().str.upper()
+
     level_col = get_column(start_df, ['LEVEL', 'TOTALLEVELS', 'STAGE'])
     game_col = get_column(start_df, ['GAME_ID', 'CATEGORY', 'Game_name' , 'MISSION'])
     diff_col = get_column(start_df, ['DIFFICULTY', 'mode'])
+    
     playtime_col = get_column(complete_df, ['PLAY_TIME_AVG', 'PLAYTIME', 'PLAYTIME_AVG', 'playtime_avg'])
     hint_col = get_column(complete_df, ['HINT_USED_SUM', 'HINT_USED', 'HINT'])
     skipped_col = get_column(complete_df, ['SKIPPED_SUM', 'SKIPPED', 'SKIP'])
     attempts_col = get_column(complete_df, ['ATTEMPTS_SUM', 'ATTEMPTS', 'TRY_COUNT'])
+    
     for df in [start_df, complete_df]:
         if level_col:
             df[level_col] = df[level_col].apply(clean_level)
             df.sort_values(level_col, inplace=True)
+            
     rename_dict_start = {'USERS': 'Start Users'}
     if level_col: rename_dict_start[level_col] = 'LEVEL'
     if game_col: rename_dict_start[game_col] = 'GAME_ID'
     if diff_col: rename_dict_start[diff_col] = 'DIFFICULTY'
     start_df.rename(columns=rename_dict_start, inplace=True)
+
     rename_dict_complete = {'USERS': 'Complete Users'}
     if level_col: rename_dict_complete[level_col] = 'LEVEL'
     if game_col: rename_dict_complete[game_col] = 'GAME_ID'
@@ -461,47 +481,58 @@ def process_files_analyzer(start_df, complete_df):
     if skipped_col: rename_dict_complete[skipped_col] = 'SKIPPED_SUM'
     if attempts_col: rename_dict_complete[attempts_col] = 'ATTEMPTS_SUM'
     complete_df.rename(columns=rename_dict_complete, inplace=True)
+
     merge_cols = [col for col in ['GAME_ID', 'DIFFICULTY', 'LEVEL'] if col in start_df.columns]
     merged = pd.merge(start_df, complete_df, on=merge_cols, how='outer')
+    
     keep_cols = merge_cols + ['Start Users', 'Complete Users']
     if 'PLAY_TIME_AVG' in merged.columns: keep_cols.append('PLAY_TIME_AVG')
     if 'HINT_USED_SUM' in merged.columns: keep_cols.append('HINT_USED_SUM')
     if 'SKIPPED_SUM' in merged.columns: keep_cols.append('SKIPPED_SUM')
     if 'ATTEMPTS_SUM' in merged.columns: keep_cols.append('ATTEMPTS_SUM')
     merged = merged[[col for col in keep_cols if col in merged.columns]]
+
     if 'Start Users' in merged.columns and 'Complete Users' in merged.columns:
         merged['Game Play Drop'] = ((merged['Start Users'] - merged['Complete Users']) / merged['Start Users'].replace(0, np.nan)) * 100
         merged['Popup Drop'] = ((merged['Complete Users'] - merged['Start Users'].shift(-1)) / merged['Complete Users'].replace(0, np.nan)) * 100
     else:
         merged['Game Play Drop'] = 0
         merged['Popup Drop'] = 0
+
     def calculate_retention(group):
         if 'Start Users' not in group.columns:
             group['Retention %'] = 0
             return group
+        
         base_users = group[group['LEVEL'].isin([1, 2])]['Start Users'].max()
         if base_users == 0 or pd.isnull(base_users):
             base_users = group['Start Users'].max()
+        
         group['Retention %'] = (group['Start Users'] / base_users) * 100
         return group
+
     group_cols = [col for col in ['GAME_ID', 'DIFFICULTY'] if col in merged.columns]
     if not group_cols:
         merged['All Data'] = 'All Data'
         group_cols = ['All Data']
+        
     merged = merged.groupby(group_cols, group_keys=False).apply(calculate_retention)
+    
     fill_cols = ['Start Users', 'Complete Users', 'PLAY_TIME_AVG', 'HINT_USED_SUM', 'SKIPPED_SUM', 'ATTEMPTS_SUM']
     merged.fillna({col: 0 for col in fill_cols if col in merged.columns}, inplace=True)
+    
     if 'Game Play Drop' in merged.columns and 'Popup Drop' in merged.columns:
         merged['Total Level Drop'] = merged['Game Play Drop'] + merged['Popup Drop']
     else:
         merged['Total Level Drop'] = 0
+        
     return merged
 
 def create_charts_analyzer(df, game_name):
     charts = {}
     df_100 = df[df['LEVEL'] <= 100]
     xtick_labels = [f"$\\bf{{{val}}}$" if val % 5 == 0 else str(val) for val in np.arange(1, 101, 1)]
-    # Retention Chart
+    
     fig1, ax1 = plt.subplots(figsize=(15, 5))
     if 'Retention %' in df_100.columns and not df_100['Retention %'].dropna().empty:
         ax1.plot(df_100['LEVEL'], df_100['Retention %'], linestyle='-', color='#F57C00', linewidth=2, label='Retention')
@@ -514,7 +545,7 @@ def create_charts_analyzer(df, game_name):
         ax1.grid(True, linestyle='--', linewidth=0.5)
         ax1.legend(loc='lower left', fontsize=8)
         charts['retention'] = fig1
-    # Total Drop Chart
+        
     fig2, ax2 = plt.subplots(figsize=(15, 5))
     if 'Total Level Drop' in df_100.columns and not df_100['Total Level Drop'].dropna().empty:
         ax2.bar(df_100['LEVEL'], df_100['Total Level Drop'], color='#EF5350', label='Drop Rate')
@@ -529,7 +560,7 @@ def create_charts_analyzer(df, game_name):
         ax2.grid(True, linestyle='--', linewidth=0.5)
         ax2.legend(loc='upper right', fontsize=8)
         charts['total_drop'] = fig2
-    # Combined Drop Chart
+
     fig3, ax3 = plt.subplots(figsize=(15, 5))
     if 'Game Play Drop' in df_100.columns and 'Popup Drop' in df_100.columns and not df_100['Game Play Drop'].dropna().empty:
         width = 0.4
@@ -543,150 +574,145 @@ def create_charts_analyzer(df, game_name):
         ax3.legend(loc='upper right', fontsize=6)
         ax3.grid(True, linestyle='--', linewidth=0.5)
         charts['combined_drop'] = fig3
+        
     return charts
 
 def generate_excel_analyzer(processed_data):
     wb = Workbook()
     wb.remove(wb.active)
+    
     main_sheet = wb.create_sheet("MAIN_TAB")
     main_headers = ["Index", "Sheet Name", "Link to Sheet", "LEVEL_Start", "Start Users",
                     "LEVEL_End", "USERS_END", "Game Play Drop Count", "Popup Drop Count",
                     "Total Level Drop Count"]
     main_sheet.append(main_headers)
+    
     for col in main_sheet[1]:
         col.font = Font(bold=True, color="FFFFFF")
         col.fill = PatternFill("solid", fgColor="4F81BD")
+    
+    fill_dark_red = PatternFill("solid", fgColor="8B0000")
+    font_white = Font(color="FFFFFF")
+    fill_red = PatternFill("solid", fgColor="CD5C5C")
+    fill_pink = PatternFill("solid", fgColor="FFC0CB")
+    font_black = Font(color="000000")
+
     for idx, (game_key, df) in enumerate(processed_data.items(), start=1):
         sheet_name = str(game_key)[:31]
         ws = wb.create_sheet(sheet_name)
-        headers = ["=HYPERLINK(\"#MAIN_TAB!A1\", \"Back to Main\")", "Start Users", "Complete Users",
-                    "Game Play Drop", "Popup Drop", "Total Level Drop", "Retention %",
-                    "PLAY_TIME_AVG", "HINT_USED_SUM", "SKIPPED_SUM", "ATTEMPTS_SUM"]
+        
+        headers = ["=HYPERLINK(\"#MAIN_TAB!A1\", \"Back to Main\")"] + [col for col in df.columns if col not in ['GAME_ID', 'DIFFICULTY']]
         ws.append(headers)
+        
         ws['A1'].font = Font(color="0000FF", underline="single", bold=True, size=14)
         ws['A1'].fill = PatternFill("solid", fgColor="FFFF00")
         ws.column_dimensions['A'].width = 25
-        for _, row in df.iterrows():
+        
+        for r_idx, row in df.iterrows():
             row_values = [
                 row.get('LEVEL', 0), row.get('Start Users', 0), row.get('Complete Users', 0),
                 round(row.get('Game Play Drop', 0), 2), round(row.get('Popup Drop', 0), 2),
                 round(row.get('Total Level Drop', 0), 2), round(row.get('Retention %', 0), 2),
                 round(row.get('PLAY_TIME_AVG', 0), 2), round(row.get('HINT_USED_SUM', 0), 2),
-                round(row.get('SKIPPED_SUM', 0), 2), round(row.get('ATTEMPTS_SUM', 0), 2),
+                round(row.get('SKIPPED_SUM', 0), 2), round(row.get('ATTEMPTS_SUM', 0), 2)
             ]
+            
             ws.append(row_values)
-        apply_sheet_formatting_analyzer(ws)
-        apply_conditional_formatting_analyzer(ws, df.shape[0])
-        charts = create_charts_analyzer(df, sheet_name)
-        add_charts_to_excel_analyzer(ws, charts)
-        main_row = [
-            idx, sheet_name, f'=HYPERLINK("#{sheet_name}!A1", "View")',
-            df.get('LEVEL', 0).min(), df.get('Start Users', 0).max(),
-            df.get('LEVEL', 0).max(), df.get('Complete Users', 0).iloc[-1] if not df.empty else 0,
-            sum(df.get('Game Play Drop', 0) >= 3), sum(df.get('Popup Drop', 0) >= 3),
-            sum(df.get('Total Level Drop', 0) >= 3)
-        ]
-        main_sheet.append(main_row)
-    for row in main_sheet.iter_rows():
-        for cell in row:
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-            if cell.row == 1:
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill("solid", fgColor="4F81BD")
-    column_widths = [8, 25, 20, 18, 20, 12, 15, 12, 15, 15]
-    for i, width in enumerate(column_widths, start=1):
-        main_sheet.column_dimensions[get_column_letter(i)].width = width
-    return wb
+            
+            # Apply color formatting
+            start_col_idx = 4
+            for i, col_name in enumerate(['Game Play Drop', 'Popup Drop', 'Total Level Drop']):
+                if col_name in df.columns:
+                    value = row.get(col_name, 0)
+                    cell = ws.cell(row=ws.max_row, column=start_col_idx + i)
+                    if value >= 10:
+                        cell.fill = fill_dark_red
+                        cell.font = font_white
+                    elif value >= 5:
+                        cell.fill = fill_red
+                        cell.font = font_white
+                    elif value >= 3:
+                        cell.fill = fill_pink
+                        cell.font = font_black
+                        
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
 
-def apply_sheet_formatting_analyzer(sheet):
-    sheet.freeze_panes = 'A2'
-    for cell in sheet[1]:
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill("solid", fgColor="DDDDDD")
-    if sheet.title != "MAIN_TAB":
-        a1_cell = sheet['A1']
-        a1_cell.font = Font(color="0000FF", underline="single", bold=True, size=11)
-        a1_cell.fill = PatternFill("solid", fgColor="FFFF00")
-        sheet.column_dimensions['A'].width = 14
-    for col in sheet.columns:
-        if col[0].column != 1 or sheet.title == "MAIN_TAB":
-            max_length = max(len(str(cell.value)) for cell in col)
-            sheet.column_dimensions[get_column_letter(col[0].column)].width = max_length + 2
+def game_level_analyzer_tool():
+    st.header("📊 GAME LEVEL DATA ANALYZER")
+    st.markdown("This tool processes level start and complete data, providing detailed analytics per game and difficulty.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        start_file = st.file_uploader("📂 Upload Start Level File", type=["xlsx", "csv"], key='analyzer_start')
+    with col2:
+        complete_file = st.file_uploader("📂 Upload Complete Level File", type=["xlsx", "csv"], key='analyzer_complete')
 
-def apply_conditional_formatting_analyzer(sheet, num_rows):
-    for row in sheet.iter_rows(min_row=2, max_row=num_rows + 1):
-        for cell in row:
-            if cell.column_letter in ['D', 'E', 'F'] and isinstance(cell.value, (int, float)):
-                if cell.value >= 10:
-                    cell.fill = PatternFill(start_color='990000', end_color='990000', fill_type='solid')
-                    cell.font = Font(color="FFFFFF")
-                elif cell.value >= 7:
-                    cell.fill = PatternFill(start_color='CC3333', end_color='CC3333', fill_type='solid')
-                    cell.font = Font(color="FFFFFF")
-                elif cell.value >= 3:
-                    cell.fill = PatternFill(start_color='FF6666', end_color='FF6666', fill_type='solid')
-                    cell.font = Font(color="FFFFFF")
-                cell.alignment = Alignment(horizontal='center', vertical='center')
+    if not start_file and not complete_file:
+        st.subheader("💡 Sample Input File Format")
+        st.markdown("Please ensure your data includes columns for `level`, `users`, and optionally `game_id` and `difficulty`.")
+        st.image("https://i.imgur.com/83u6U54.png", caption="Sample Data for Analyzer Tool", use_column_width=True)
 
-def add_charts_to_excel_analyzer(worksheet, charts):
-    img_positions = {'retention': 'M2', 'total_drop': 'M32', 'combined_drop': 'M62'}
-    for name, fig in charts.items():
-        if fig:
-            img_data = BytesIO()
-            fig.savefig(img_data, format='png', bbox_inches='tight')
-            img_data.seek(0)
-            img = OpenpyxlImage(img_data)
-            worksheet.add_image(img, img_positions[name])
+    if start_file and complete_file:
+        st.markdown("---")
+        st.subheader("✅ Data Processing & Analytics")
+        try:
+            start_df = pd.read_excel(start_file) if start_file.name.endswith(".xlsx") else pd.read_csv(start_file)
+            complete_df = pd.read_excel(complete_file) if complete_file.name.endswith(".xlsx") else pd.read_csv(complete_file)
+        except Exception as e:
+            st.error(f"❌ Error reading files: {e}")
+            return
+            
+        processed_data = process_files_analyzer(start_df, complete_df)
+        
+        unique_games = processed_data.groupby(['GAME_ID', 'DIFFICULTY']).groups.keys()
+        game_options = [f"{game} ({diff})" if 'DIFFICULTY' in processed_data.columns else str(game) for game, diff in unique_games]
+        game_options.insert(0, "All Data")
+        
+        selected_option = st.selectbox("🎯 Select Game & Difficulty to Analyze", options=game_options)
+        
+        if selected_option == "All Data":
+            filtered_df = processed_data
+            charts = create_charts_analyzer(filtered_df, "All Data")
+        else:
+            game, diff = selected_option.replace("(", "").replace(")", "").split(" (")
+            filtered_df = processed_data[(processed_data['GAME_ID'] == game) & (processed_data['DIFFICULTY'] == diff)]
+            charts = create_charts_analyzer(filtered_df, selected_option)
+            
+        st.subheader("📊 Analyzed Data Table")
+        st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+        
+        st.subheader("📈 Visualizations")
+        if 'retention' in charts:
+            st.pyplot(charts['retention'])
+        if 'total_drop' in charts:
+            st.pyplot(charts['total_drop'])
+        if 'combined_drop' in charts:
+            st.pyplot(charts['combined_drop'])
+
+        st.subheader("⬇️ Download Detailed Excel Report")
+        with st.spinner("Generating Excel report..."):
+            excel_data = generate_excel_analyzer(processed_data.groupby(['GAME_ID', 'DIFFICULTY'] if 'DIFFICULTY' in processed_data.columns else 'All Data'))
+            st.download_button(
+                label="📥 Download Excel Report",
+                data=excel_data,
+                file_name=f"Game_Level_Analyzer_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        
 
 # --- Main App Logic ---
 if __name__ == "__main__":
-    st.set_page_config(layout="wide", page_title="Game Metrics Dashboard", page_icon="🎮")
-    st.title("🎮 Game Analytics Dashboard")
-    st.markdown("A suite of tools to analyze game progression, retention, and drop-off rates.")
-
     if check_password():
-        tool_choice = st.sidebar.radio("Select Tool", ["DP1GAME METRIX", "GAME PROGRESSION", "GAME LEVEL DATA ANALYZER"], key="tool_select")
+        st.set_page_config(page_title="Game Analytics Tools", layout="wide")
+        st.title("🎮 Game Analytics Dashboard")
         
-        st.sidebar.markdown("---")
-        if st.sidebar.button("Log Out"):
-            st.session_state.logged_in = False
-            st.rerun()
+        tab_list = ["GAME PROGRESSION", "GAME LEVEL DATA ANALYZER"]
+        selected_tool = st.sidebar.radio("Select a Tool", tab_list)
 
-        if tool_choice == "DP1GAME METRIX":
-            dp1game_metrix_tool()
-        elif tool_choice == "GAME PROGRESSION":
+        if selected_tool == "GAME PROGRESSION":
             game_progression_tool()
-        elif tool_choice == "GAME LEVEL DATA ANALYZER":
-            st.header("📊 GAME LEVEL DATA ANALYZER")
-            st.markdown("This tool processes a start file and a complete file, and generates a detailed Excel report with various metrics and charts for each unique game/level/difficulty combination.")
-            st.warning("Note: This tool is designed for more complex datasets with multiple games or difficulty modes. Please upload your files and follow the instructions to generate the report.")
-
-            col1_analyzer, col2_analyzer = st.columns(2)
-            with col1_analyzer:
-                start_file_analyzer = st.file_uploader("📂 Upload Start Level File", type=["xlsx", "csv"], key="start_analyzer")
-            with col2_analyzer:
-                complete_file_analyzer = st.file_uploader("📂 Upload Complete Level File", type=["xlsx", "csv"], key="complete_analyzer")
-
-            if start_file_analyzer and complete_file_analyzer:
-                try:
-                    start_df_analyzer = pd.read_excel(start_file_analyzer) if start_file_analyzer.name.endswith(".xlsx") else pd.read_csv(start_file_analyzer)
-                    complete_df_analyzer = pd.read_excel(complete_file_analyzer) if complete_file_analyzer.name.endswith(".xlsx") else pd.read_csv(complete_file_analyzer)
-
-                    processed_data = process_files_analyzer(start_df_analyzer, complete_df_analyzer)
-                    
-                    st.success("✅ Files processed successfully! Click the button below to download the report.")
-                    
-                    if st.button("Generate & Download Full Excel Report"):
-                        with st.spinner('Generating Excel report... this may take a moment.'):
-                            workbook = generate_excel_analyzer(processed_data)
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_file:
-                                workbook.save(tmp_file.name)
-                                tmp_file.seek(0)
-                                st.download_button(
-                                    label="📥 Download Game Analyzer Report",
-                                    data=tmp_file.read(),
-                                    file_name="Game_Data_Analyzer_Report.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                )
-                except Exception as e:
-                    st.error(f"❌ An error occurred during processing: {e}")
+        elif selected_tool == "GAME LEVEL DATA ANALYZER":
+            game_level_analyzer_tool()
