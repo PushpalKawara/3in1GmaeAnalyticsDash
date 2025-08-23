@@ -13,7 +13,6 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # --- User credentials (for demonstration) ---
-
 USERNAME = "Pushpal@2025"
 PASSWORD = "Pushpal@202512345"
 
@@ -112,17 +111,40 @@ def create_drop_chart(df, version, date_selected, title):
 # --- Tool 1: DP1GAME METRIX ---
 def dp1game_metrix_tool():
     st.header("📊 DP1GAME METRIX Dashboard")
+    st.markdown("This tool processes retention and ad event data to provide a comprehensive game metrics report.")
+    
     col1, col2 = st.columns(2)
     with col1:
-        file1 = st.file_uploader("📥 Upload Retention Base File", type=["csv"], key='file1')
+        file1 = st.file_uploader("📥 Upload Retention Base File (.csv)", type=["csv"], key='file1')
     with col2:
-        file2 = st.file_uploader("📥 Upload Ad Event File", type=["csv"], key='file2')
+        file2 = st.file_uploader("📥 Upload Ad Event File (.csv)", type=["csv"], key='file2')
+
+    # Show sample input image if no files are uploaded
+    if not file1 and not file2:
+        st.subheader("💡 Sample Input File Format")
+        st.markdown("Please use the following format for your CSV files:")
+        st.markdown("---")
+        st.markdown("#### **Retention Base File**")
+        st.image("https://i.imgur.com/k91w4sI.png", caption="Sample Retention Base Data", use_column_width=True)
+        st.markdown("---")
+        st.markdown("#### **Ad Event File**")
+        st.image("https://i.imgur.com/8Qj9g7c.png", caption="Sample Ad Event Data", use_column_width=True)
+        st.markdown("---")
+    
     st.subheader("📝 Editable Fields")
-    version = st.text_input("Enter Version (e.g. v1.2.3)", value="v1.0.0", key='version1')
-    date_selected = st.date_input("Date Selected", value=datetime.date.today(), key='date1')
-    check_date = st.date_input("Check Date", value=datetime.date.today() + datetime.timedelta(days=1), key='check_date1')
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        version = st.text_input("Enter Version (e.g. v1.2.3)", value="v1.0.0", key='version1')
+    with col4:
+        date_selected = st.date_input("Date Selected", value=datetime.date.today(), key='date1')
+    with col5:
+        check_date = st.date_input("Check Date", value=datetime.date.today() + datetime.timedelta(days=1), key='check_date1')
+
     user_install_count = st.number_input("🔢 Optional: Enter User Install Count", min_value=0, value=None, step=1, key='install_count1')
+    
     if file1 and file2:
+        st.markdown("---")
+        st.subheader("✅ Data Processing & Analytics")
         df1 = pd.read_csv(file1)
         df1.columns = df1.columns.str.strip().str.upper()
         level_col = next((col for col in df1.columns if col in ['LEVEL','Level', 'LEVELPLAYED', 'TOTALLEVELPLAYED', 'TOTALLEVELSPLAYED', 'LEVEL_NUMBER']), None)
@@ -139,8 +161,11 @@ def dp1game_metrix_tool():
                 level1_users = df1[df1['LEVEL_CLEAN'] == 1]['USERS'].values[0] if 1 in df1['LEVEL_CLEAN'].values else 0
                 level2_users = df1[df1['LEVEL_CLEAN'] == 2]['USERS'].values[0] if 2 in df1['LEVEL_CLEAN'].values else 0
                 max_users = max(level1_users, level2_users)
-                install_source = f"Auto-calculated (max of Level 1: {level1_users}, Level 2: {level2_users})"
-            st.info(f"📊 Using install base of {max_users:,} (Source: {install_source})")
+                install_source = f"Auto-calculated (max of Level 1: {level1_users:,}, Level 2: {level2_users:,})"
+            
+            with st.expander("ℹ️ Show Install Base Info"):
+                st.info(f"📊 Using install base of **{max_users:,}** (Source: {install_source})")
+            
             df1['Retention %'] = round((df1['USERS'] / max_users) * 100, 2)
             df1['Drop'] = ((df1['USERS'] - df1['USERS'].shift(-1)) / df1['USERS']).fillna(0) * 100
             df1['Drop'] = df1['Drop'].round(2)
@@ -151,8 +176,9 @@ def dp1game_metrix_tool():
             retention_150 = round(df1[df1['LEVEL_CLEAN'] == 150]['Retention %'].values[0], 2) if 150 in df1['LEVEL_CLEAN'].values else 0
             retention_200 = round(df1[df1['LEVEL_CLEAN'] == 200]['Retention %'].values[0], 2) if 200 in df1['LEVEL_CLEAN'].values else 0
         else:
-            st.error("❌ Required columns not found in file 1.")
+            st.error("❌ Required columns `LEVEL` and `USERS` not found in the Retention Base File.")
             return
+
         df2 = pd.read_csv(file2)
         df2.columns = df2.columns.str.strip()
         if 'EVENT' in df2.columns and 'USERS' in df2.columns:
@@ -176,14 +202,19 @@ def dp1game_metrix_tool():
             df2['Multi2'] = df2['Avg Diff Ads'] * df2['Diff of Users']
             sum2 = df2['Multi2'].sum()
             avg_ads_per_user = round((sum1 + sum2) / max_users, 2)
-            st.success(f"✅ Ad data processed successfully! Total Average Ads per User: {avg_ads_per_user}")
+            st.success(f"✅ Ad data processed successfully! Total Average Ads per User: **{avg_ads_per_user}**")
         else:
-            st.error("❌ Required columns not found in file 2.")
+            st.error("❌ Required columns `EVENT` and `USERS` not found in the Ad Event File.")
             return
+
+        st.markdown("---")
+        st.subheader("📈 Visualization")
         retention_fig = create_retention_chart(df1[df1['LEVEL_CLEAN'] <= 100], version, date_selected, "Retention Chart (Levels 1-100)")
         drop_fig = create_drop_chart(df1[df1['LEVEL_CLEAN'] <= 100].rename(columns={'LEVEL_CLEAN': 'Level'}), version, date_selected, "Drop Chart (Levels 1-100)")
         st.pyplot(retention_fig)
         st.pyplot(drop_fig)
+
+        st.markdown("---")
         st.subheader("📝 Manual Metrics & Download")
         default_summary_data = {
             "Version": version, "Date Selected": date_selected.strftime("%d-%b-%y"),
@@ -197,7 +228,8 @@ def dp1game_metrix_tool():
             "Avg Ads per User": avg_ads_per_user
         }
         df_summary = pd.DataFrame(list(default_summary_data.items()), columns=["Metric", "Value"])
-        tab1, tab2 = st.tabs(["📥 Manual Input", "📋 Copy Summary"])
+        
+        tab1, tab2 = st.tabs(["📥 Manual Input", "📋 Summary Table"])
         with tab1:
             st.markdown("### 🔧 Enter Manual Metrics Here:")
             day1_retention = st.text_input("Day 1 Retention (%)", value="29.56%")
@@ -211,8 +243,11 @@ def dp1game_metrix_tool():
                 df_summary.loc["Session Length"] = f"{session_length} s"
                 df_summary.loc["Playtime Length"] = f"{playtime_length} s"
                 df_summary = df_summary.reset_index()
-        st.dataframe(df_summary, hide_index=True)
+        with tab2:
+            st.dataframe(df_summary, hide_index=True, use_container_width=True)
+
         df_progression = df1[['LEVEL_CLEAN', 'USERS', 'Retention %', 'Drop']].rename(columns={'LEVEL_CLEAN': 'Level'})
+        
         excel_data = generate_excel_report_dp1(df_summary, df_progression, retention_fig, drop_fig)
         st.download_button(
             label="📥 Download Excel Report",
@@ -220,22 +255,53 @@ def dp1game_metrix_tool():
             file_name=f"DP1_METRIX_Report_{version}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
 # --- Tool 2: GAME PROGRESSION ---
 def game_progression_tool():
     st.header("📊 GAME PROGRESSION Dashboard")
-    start_file = st.file_uploader("📂 Upload Start Level File", type=["xlsx", "csv"], key='start_file')
-    complete_file = st.file_uploader("📂 Upload Complete Level File", type=["xlsx", "csv"], key='complete_file')
-    version = st.text_input("📌 Game Version", value="1.0.0", key='version2')
-    date_selected = st.date_input("📅 Select Date", value=datetime.date.today(), key='date2')
+    st.markdown("This tool analyzes level start and complete data to track game progression and user drop-offs.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        start_file = st.file_uploader("📂 Upload Start Level File", type=["xlsx", "csv"], key='start_file')
+    with col2:
+        complete_file = st.file_uploader("📂 Upload Complete Level File", type=["xlsx", "csv"], key='complete_file')
+
+    # Show sample input image if no files are uploaded
+    if not start_file and not complete_file:
+        st.subheader("💡 Sample Input File Format")
+        st.markdown("Please use the following format for your files:")
+        st.markdown("---")
+        st.markdown("#### **Start Level File**")
+        st.image("https://i.imgur.com/eBw6j51.png", caption="Sample Start Level Data", use_column_width=True)
+        st.markdown("---")
+        st.markdown("#### **Complete Level File**")
+        st.image("https://i.imgur.com/83u6U54.png", caption="Sample Complete Level Data", use_column_width=True)
+        st.markdown("---")
+
+    st.subheader("📌 General Information")
+    col3, col4 = st.columns(2)
+    with col3:
+        version = st.text_input("Game Version", value="1.0.0", key='version2')
+    with col4:
+        date_selected = st.date_input("Select Date", value=datetime.date.today(), key='date2')
+
     if start_file and complete_file:
-        df_start = pd.read_excel(start_file) if start_file.name.endswith(".xlsx") else pd.read_csv(start_file)
-        df_complete = pd.read_excel(complete_file) if complete_file.name.endswith(".xlsx") else pd.read_csv(complete_file)
+        st.markdown("---")
+        st.subheader("✅ Data Processing & Analytics")
+        try:
+            df_start = pd.read_excel(start_file) if start_file.name.endswith(".xlsx") else pd.read_csv(start_file)
+            df_complete = pd.read_excel(complete_file) if complete_file.name.endswith(".xlsx") else pd.read_csv(complete_file)
+        except Exception as e:
+            st.error(f"❌ Error reading files: {e}")
+            return
+
         df_start.columns = df_start.columns.str.strip().str.upper()
         df_complete.columns = df_complete.columns.str.strip().str.upper()
-        level_cols = ['LEVEL', 'LEVELPLAYED', 'TOTALLEVELPLAYED', 'TOTALLEVELSPLAYED', 'LEVEL_NUMBER', 'TOTAL_LEVEL']
+
+        level_cols = ['LEVEL', 'LEVELPLAYED', 'TOTALLEVELSPLAYED', 'LEVEL_NUMBER', 'TOTAL_LEVEL']
         level_col_start = next((col for col in df_start.columns if col in level_cols), None)
         user_col_start = next((col for col in df_start.columns if 'USER' in col), None)
+
         if level_col_start and user_col_start:
             df_start = df_start[[level_col_start, user_col_start]]
             df_start['LEVEL_CLEAN'] = df_start[level_col_start].apply(clean_level)
@@ -245,9 +311,11 @@ def game_progression_tool():
         else:
             st.error("❌ Required columns not found in start file.")
             return
+
         level_col_complete = next((col for col in df_complete.columns if col in level_cols), None)
         user_col_complete = next((col for col in df_complete.columns if 'USER' in col), None)
         additional_cols = [c for c in ['PLAYTIME_AVG', 'PLAY_TIME_AVG', 'HINT_USED_SUM', 'RETRY_COUNT_SUM', 'SKIPPED_SUM', 'ATTEMPT_SUM', 'PREFAB_NAME'] if c in df_complete.columns]
+
         if level_col_complete and user_col_complete:
             cols_to_keep = [level_col_complete, user_col_complete] + additional_cols
             df_complete = df_complete[cols_to_keep]
@@ -258,22 +326,30 @@ def game_progression_tool():
         else:
             st.error("❌ Required columns not found in complete file.")
             return
+
         df = pd.merge(df_start, df_complete, on='LEVEL_CLEAN', how='outer').sort_values('LEVEL_CLEAN')
         base_users = df[df['LEVEL_CLEAN'].isin([1, 2])]['Start Users'].max()
         df['Game Play Drop'] = ((df['Start Users'] - df['Complete Users']) / df['Start Users']) * 100
         df['Popup Drop'] = ((df['Complete Users'] - df['Start Users'].shift(-1)) / df['Complete Users']) * 100
         df['Total Level Drop'] = df['Game Play Drop'] + df['Popup Drop']
         df['Retention %'] = (df['Start Users'] / base_users) * 100
+
         if 'RETRY_COUNT_SUM' in df.columns:
             df['Attempt'] = df['RETRY_COUNT_SUM'] / df['Complete Users']
+
         metric_cols = ['Game Play Drop', 'Popup Drop', 'Total Level Drop', 'Retention %']
         if 'Attempt' in df.columns: metric_cols.append('Attempt')
         df[metric_cols] = df[metric_cols].round(2)
+
         df_100 = df[df['LEVEL_CLEAN'] <= 100]
+
+        st.subheader("📈 Visualization")
         retention_fig = create_retention_chart(df_100, version, date_selected, "Retention Chart (Levels 1-100)")
         drop_fig = create_drop_chart(df_100.rename(columns={'LEVEL_CLEAN': 'Level', 'Total Level Drop': 'Drop'}), version, date_selected, "Total Drop Chart (Levels 1-100)")
         st.pyplot(retention_fig)
         st.pyplot(drop_fig)
+
+        st.markdown("---")
         st.subheader("📉 Combo Drop Chart (Levels 1-100)")
         drop_comb_fig, ax3 = plt.subplots(figsize=(15, 6))
         width = 0.4
@@ -294,13 +370,12 @@ def game_progression_tool():
         ax3.legend(loc='upper right', fontsize=8)
         plt.tight_layout()
         st.pyplot(drop_comb_fig)
+
+        st.markdown("---")
         st.subheader("⬇️ Download Excel Report")
         export_cols = ['LEVEL_CLEAN', 'Start Users', 'Complete Users', 'Game Play Drop', 'Popup Drop', 'Total Level Drop', 'Retention %'] + additional_cols
         df_export = df[export_cols].rename(columns={'LEVEL_CLEAN': 'Level'})
-        st.dataframe(df_export, hide_index=True)
-        # Note: You'll need to create a dedicated Excel generation function for this tool
-        # that handles all three charts and the new dataframes.
-        # For simplicity, this example just displays the table.
+        st.dataframe(df_export, hide_index=True, use_container_width=True)
 
 # --- Tool 3: GAME LEVEL DATA ANALYZER ---
 def process_files_analyzer(start_df, complete_df):
@@ -515,8 +590,25 @@ def add_charts_to_excel_analyzer(worksheet, charts):
 def game_level_analyzer_tool():
     st.header("🎮 GAME LEVEL DATA ANALYZER")
     st.markdown("This tool processes level start and complete data to generate a detailed analytics report.")
-    start_file = st.file_uploader("LEVEL_START.csv", type="csv", key='analyzer_start')
-    complete_file = st.file_uploader("LEVEL_COMPLETE.csv", type="csv", key='analyzer_complete')
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        start_file = st.file_uploader("LEVEL_START.csv", type="csv", key='analyzer_start')
+    with col2:
+        complete_file = st.file_uploader("LEVEL_COMPLETE.csv", type="csv", key='analyzer_complete')
+    
+    # Show sample input image if no files are uploaded
+    if not start_file and not complete_file:
+        st.subheader("💡 Sample Input File Format")
+        st.markdown("Please use the following format for your CSV files:")
+        st.markdown("---")
+        st.markdown("#### **LEVEL_START.csv**")
+        st.image("https://i.imgur.com/vHq869L.png", caption="Sample LEVEL_START.csv Data", use_column_width=True)
+        st.markdown("---")
+        st.markdown("#### **LEVEL_COMPLETE.csv**")
+        st.image("https://i.imgur.com/rM1VfO7.png", caption="Sample LEVEL_COMPLETE.csv Data", use_column_width=True)
+        st.markdown("---")
+
     if start_file and complete_file:
         with st.spinner("Processing data..."):
             try:
@@ -532,35 +624,34 @@ def game_level_analyzer_tool():
                 for group_key, group_df in merged.groupby(group_cols):
                     key = '_'.join(map(str, group_key)) if isinstance(group_key, tuple) else str(group_key)
                     processed_data[key] = group_df
+                
                 wb = generate_excel_analyzer(processed_data)
+                
                 with tempfile.NamedTemporaryFile(delete=False) as tmp:
                     wb.save(tmp.name)
                     with open(tmp.name, "rb") as f:
                         excel_bytes = f.read()
+
                 st.success("Processing complete!")
                 st.download_button(
-                    label="📥 Download Consolidated Report",
+                    label="📥 Download Excel Report",
                     data=excel_bytes,
-                    file_name="Game_Analytics_Report.xlsx",
+                    file_name="Game_Level_Analytics_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-                with st.expander("Preview Processed Data"):
-                    st.dataframe(merged.head(20))
             except Exception as e:
-                st.error(f"Error processing files: {str(e)}")
+                st.error(f"❌ An error occurred during processing: {e}")
 
-# --- Main App ---
-def main_app():
-    st.set_page_config(page_title="Analytics Dashboard", layout="wide")
-    st.title(" Game Analytics Dashboard")
-    tab1, tab2, tab3 = st.tabs(["📊 GAME METRIX Progression ", "📈 GameLevel Progression", "🎮All Game Level Progression"])
-    with tab1:
-        dp1game_metrix_tool()
-    with tab2:
-        game_progression_tool()
-    with tab3:
-        game_level_analyzer_tool()
+# --- Main App Logic ---
+st.set_page_config(layout="wide", page_title="Game Analytics Tools", page_icon="🎮")
+st.title("🎮 Game Analytics Tools")
 
-if __name__ == "__main__":
-    if check_password():
-        main_app()
+if check_password():
+    st.sidebar.title("🛠️ Tools")
+    tool_options = {
+        "DP1GAME METRIX": dp1game_metrix_tool,
+        "GAME PROGRESSION": game_progression_tool,
+        "GAME LEVEL DATA ANALYZER": game_level_analyzer_tool
+    }
+    selected_tool = st.sidebar.radio("Select a Tool:", list(tool_options.keys()))
+    tool_options[selected_tool]()
