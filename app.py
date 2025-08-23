@@ -553,8 +553,8 @@ def game_level_analyzer_tool():
 # --- Main App ---
 def main_app():
     st.set_page_config(page_title="Analytics Dashboard", layout="wide")
-    st.title("통합 게임 분석 대시보드")
-    tab1, tab2, tab3 = st.tabs(["📊 DP1GAME METRIX", "📈 GAME PROGRESSION", "🎮 GAME LEVEL DATA ANALYZER"])
+    st.title(" Game Analytics Dashboard")
+    tab1, tab2, tab3 = st.tabs(["📊 GAME METRIX Progression ", "📈 GameLevel Progression", "🎮All Game Level Progression"])
     with tab1:
         dp1game_metrix_tool()
     with tab2:
